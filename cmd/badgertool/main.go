@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"strconv"
@@ -23,16 +24,6 @@ func main() {
 		logrus.SetLevel(logLevel)
 	}
 
-	keys := []string{}
-	for _, v := range flag.Args() {
-		v = "\"" + v + "\""
-		s, err := strconv.Unquote(v)
-		if err != nil {
-			logrus.Fatalf("invalid key %v", v)
-		}
-		keys = append(keys, s)
-	}
-
 	opts := badger.DefaultOptions(*dbPath)
 	opts.Logger = logrus.StandardLogger()
 	db, err = badger.Open(opts)
@@ -40,6 +31,28 @@ func main() {
 		logrus.Fatal(err)
 	}
 	defer db.Close()
+
+	cmd := flag.Arg(0)
+	m := map[string]func(_ *badger.DB, _ []string){
+		"get": cmdGet,
+		"set": cmdSet,
+	}
+	help := func(_ *badger.DB, _ []string) {
+		fmt.Println("badgertool -db [datebase] [get|set] [keys|key] [value]")
+	}
+	m["help"] = help
+	if len(flag.Args()) == 0 {
+		help(nil, nil)
+	} else {
+		m[cmd](db, flag.Args()[1:])
+	}
+}
+
+func cmdGet(db *badger.DB, args []string) {
+	keys := []string{}
+	for _, v := range args {
+		keys = append(keys, parseQuoteString(v))
+	}
 
 	db.View(func(txn *badger.Txn) error {
 		// try get if len(keys) == 1
@@ -75,6 +88,44 @@ func main() {
 	})
 }
 
+func cmdSet(db *badger.DB, args []string) {
+	flags := flag.NewFlagSet("set", flag.ExitOnError)
+	force := flags.Bool("f", false, "force (set without confirm)")
+	flags.Parse(args)
+
+	key := parseQuoteString(flags.Arg(0))
+	value := parseQuoteString(flags.Arg(1))
+	txn := db.NewTransaction(true)
+	doWrite := true
+	item, err := txn.Get([]byte(key))
+	if err != nil {
+		if !errors.Is(err, badger.ErrKeyNotFound) {
+			logrus.Fatal(err)
+		}
+	} else {
+		orgValue := make([]byte, item.ValueSize())
+		if _, err := item.ValueCopy(orgValue); err != nil {
+			logrus.Fatal(err)
+		}
+		fmt.Printf("key already exists: %s %s\n", strconv.QuoteToASCII(key),
+			strconv.QuoteToASCII(string(orgValue)))
+		if !*force {
+			ch := 'n'
+			fmt.Printf("continue set? (y/n) ")
+			fmt.Scanf("%c", &ch)
+			if ch != 'y' {
+				doWrite = false
+				fmt.Println("canceled")
+			}
+		}
+	}
+	if doWrite {
+		fmt.Printf("write %s %s\n", strconv.QuoteToASCII(key), strconv.QuoteToASCII(value))
+		txn.Set([]byte(key), []byte(value))
+		txn.Commit()
+	}
+}
+
 func matchKeys(s string, keys []string) bool {
 	for _, key := range keys {
 		if !strings.Contains(s, key) {
@@ -82,4 +133,13 @@ func matchKeys(s string, keys []string) bool {
 		}
 	}
 	return true
+}
+
+func parseQuoteString(v string) string {
+	v = "\"" + v + "\""
+	s, err := strconv.Unquote(v)
+	if err != nil {
+		logrus.Fatalf("invalid key %v", v)
+	}
+	return s
 }
