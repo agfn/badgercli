@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/dgraph-io/badger/v3"
@@ -15,12 +16,21 @@ func main() {
 	dbPath := flag.String("db", "", "database directory")
 	level := flag.String("l", "error", "log level")
 	flag.Parse()
-	keys := flag.Args()
 
 	if logLevel, err := logrus.ParseLevel(*level); err != nil {
 		logrus.Fatal(err)
 	} else {
 		logrus.SetLevel(logLevel)
+	}
+
+	keys := []string{}
+	for _, v := range flag.Args() {
+		v = "\"" + v + "\""
+		s, err := strconv.Unquote(v)
+		if err != nil {
+			logrus.Fatalf("invalid key %v", v)
+		}
+		keys = append(keys, s)
 	}
 
 	opts := badger.DefaultOptions(*dbPath)
@@ -40,7 +50,7 @@ func main() {
 					logrus.Fatal(err)
 				}
 				v.Value(func(val []byte) error {
-					fmt.Println(bytesStr(val))
+					fmt.Println(strconv.Quote(string(val)))
 					return nil
 				})
 				return nil
@@ -52,9 +62,9 @@ func main() {
 		it.Rewind()
 		for ; it.Valid(); it.Next() {
 			if matchKeys(string(it.Item().Key()), keys) {
-				fmt.Print(bytesStr(it.Item().Key()), " ")
+				fmt.Print(strconv.Quote(string(it.Item().Key())), " ")
 				if err := it.Item().Value(func(val []byte) error {
-					fmt.Println(bytesStr(val))
+					fmt.Println(strconv.Quote(string(val)))
 					return nil
 				}); err != nil {
 					logrus.Fatal(err)
@@ -63,19 +73,6 @@ func main() {
 		}
 		return nil
 	})
-}
-
-func bytesStr(buf []byte) string {
-	// BUG! do not take `\xxx` string into consideration
-	var ret string
-	for _, x := range buf {
-		if x >= 33 && x <= 126 {
-			ret += string(x)
-		} else {
-			ret += fmt.Sprintf("\\x%02x", x)
-		}
-	}
-	return ret
 }
 
 func matchKeys(s string, keys []string) bool {
