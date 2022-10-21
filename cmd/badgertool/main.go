@@ -50,7 +50,7 @@ func main() {
 					logrus.Fatal(err)
 				}
 				v.Value(func(val []byte) error {
-					fmt.Println(strconv.Quote(string(val)))
+					fmt.Println(strconv.QuoteToASCII(string(val)))
 					return nil
 				})
 				return nil
@@ -62,9 +62,9 @@ func main() {
 		it.Rewind()
 		for ; it.Valid(); it.Next() {
 			if matchKeys(string(it.Item().Key()), keys) {
-				fmt.Print(strconv.Quote(string(it.Item().Key())), " ")
+				fmt.Print(strconv.QuoteToASCII(string(it.Item().Key())), " ")
 				if err := it.Item().Value(func(val []byte) error {
-					fmt.Println(strconv.Quote(string(val)))
+					fmt.Println(strconv.QuoteToASCII(string(val)))
 					return nil
 				}); err != nil {
 					logrus.Fatal(err)
