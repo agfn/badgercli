@@ -24,14 +24,6 @@ func main() {
 		logrus.SetLevel(logLevel)
 	}
 
-	opts := badger.DefaultOptions(*dbPath)
-	opts.Logger = logrus.StandardLogger()
-	db, err = badger.Open(opts)
-	if err != nil {
-		logrus.Fatal(err)
-	}
-	defer db.Close()
-
 	cmd := flag.Arg(0)
 	m := map[string]func(_ *badger.DB, _ []string){
 		"get": cmdGet,
@@ -44,6 +36,17 @@ func main() {
 	if len(flag.Args()) == 0 {
 		help(nil, nil)
 	} else {
+		opts := badger.DefaultOptions(*dbPath)
+		opts.Logger = logrus.StandardLogger()
+		if cmd == "get" {
+			opts.ReadOnly = true
+		}
+		db, err = badger.Open(opts)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		defer db.Close()
+
 		m[cmd](db, flag.Args()[1:])
 	}
 }
