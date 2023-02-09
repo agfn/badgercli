@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -52,9 +53,13 @@ func main() {
 }
 
 func cmdGet(db *badger.DB, args []string) {
+	flags := flag.NewFlagSet("seget", flag.ExitOnError)
+	format := flags.String("format", "", "encoding format (default is quoted str, 'hex' also supported)")
+	flags.Parse(args)
+
 	keys := []string{}
-	for _, v := range args {
-		keys = append(keys, parseQuoteString(v))
+	for _, v := range flags.Args() {
+		keys = append(keys, decodeInput(v, *format))
 	}
 
 	db.View(func(txn *badger.Txn) error {
@@ -66,7 +71,7 @@ func cmdGet(db *badger.DB, args []string) {
 					logrus.Fatal(err)
 				}
 				v.Value(func(val []byte) error {
-					fmt.Println(strconv.QuoteToASCII(string(val)))
+					fmt.Println(encodeOutput(val, *format))
 					return nil
 				})
 				return nil
@@ -78,9 +83,9 @@ func cmdGet(db *badger.DB, args []string) {
 		it.Rewind()
 		for ; it.Valid(); it.Next() {
 			if matchKeys(string(it.Item().Key()), keys) {
-				fmt.Print(strconv.QuoteToASCII(string(it.Item().Key())), " ")
+				fmt.Print(encodeOutput(it.Item().Key(), *format), " ")
 				if err := it.Item().Value(func(val []byte) error {
-					fmt.Println(strconv.QuoteToASCII(string(val)))
+					fmt.Println(encodeOutput(val, *format))
 					return nil
 				}); err != nil {
 					logrus.Fatal(err)
@@ -145,4 +150,26 @@ func parseQuoteString(v string) string {
 		logrus.Fatalf("invalid key %v", v)
 	}
 	return s
+}
+
+func decodeInput(v, format string) string {
+	switch format {
+	case "hex":
+		r, err := hex.DecodeString(v)
+		if err != nil {
+			logrus.Fatal(err)
+		}
+		return string(r)
+	default:
+		return parseQuoteString(v)
+	}
+}
+
+func encodeOutput(v []byte, format string) string {
+	switch format {
+	case "hex":
+		return hex.EncodeToString(v)
+	default:
+		return strconv.QuoteToASCII(string(v))
+	}
 }
