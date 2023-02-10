@@ -99,10 +99,11 @@ func cmdGet(db *badger.DB, args []string) {
 func cmdSet(db *badger.DB, args []string) {
 	flags := flag.NewFlagSet("set", flag.ExitOnError)
 	force := flags.Bool("f", false, "force (set without confirm)")
+	format := flags.String("format", "", "encoding format (default is quoted str, 'hex' also supported)")
 	flags.Parse(args)
 
-	key := parseQuoteString(flags.Arg(0))
-	value := parseQuoteString(flags.Arg(1))
+	key := decodeInput(flags.Arg(0), *format)
+	value := decodeInput(flags.Arg(1), *format)
 	txn := db.NewTransaction(true)
 	doWrite := true
 	item, err := txn.Get([]byte(key))
@@ -115,8 +116,8 @@ func cmdSet(db *badger.DB, args []string) {
 		if _, err := item.ValueCopy(orgValue); err != nil {
 			logrus.Fatal(err)
 		}
-		fmt.Printf("key already exists: %s %s\n", strconv.QuoteToASCII(key),
-			strconv.QuoteToASCII(string(orgValue)))
+		fmt.Printf("key already exists: %s %s\n", encodeOutput([]byte(key), *format),
+			encodeOutput([]byte(orgValue), *format))
 		if !*force {
 			ch := 'n'
 			fmt.Printf("continue set? (y/n) ")
@@ -128,7 +129,8 @@ func cmdSet(db *badger.DB, args []string) {
 		}
 	}
 	if doWrite {
-		fmt.Printf("write %s %s\n", strconv.QuoteToASCII(key), strconv.QuoteToASCII(value))
+		fmt.Printf("write %s %s\n",
+			encodeOutput([]byte(key), *format), encodeOutput([]byte(value), *format))
 		txn.Set([]byte(key), []byte(value))
 		txn.Commit()
 	}
